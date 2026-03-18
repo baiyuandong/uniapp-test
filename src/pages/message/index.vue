@@ -22,7 +22,7 @@
         <!-- 聊天区域 -->
         <scroll-view
           id="scrollview" class="chat-content-box bg-[#F6F6F6]" :scroll-y="true"
-          :scroll-top="scrollTop" :scroll-into-view="scrollIntoView" :scroll-with-animation="true" :style="chatContentStyle" @scroll="onScroll"
+          :scroll-top="scrollTop" :style="chatContentStyle" @scroll="onScroll"
         >
           <view id="msglistview" class="chat-body">
             <!-- 加载提示 -->
@@ -416,6 +416,19 @@ function getUserMessageListEvent() {
   msgList.value = []
 }
 
+// 给内容区域计算高度
+const contentInfoHeight = ref(0)
+// 聊天内容区域高度（减去头部和底部）
+const chatContentHeight = ref(0)
+// 底部聊天区域高度
+const chatFooterHeight = ref(0)
+const keyboardHeight = ref(0)
+const chatContentStyle = computed(() => ({
+  paddingBottom: `${chatFooterHeight.value + keyboardHeight.value}px`,
+}))
+const chatFooterStyle = computed(() => ({
+  transform: keyboardHeight.value > 0 ? `translateY(-${keyboardHeight.value}px)` : 'translateY(0)',
+}))
 function setContentAreaHeightEvent() {
   uni.getSystemInfo({
     success(res) {
