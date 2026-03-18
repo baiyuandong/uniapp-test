@@ -22,7 +22,7 @@
         <!-- 聊天区域 -->
         <scroll-view
           id="scrollview" class="chat-content-box bg-[#F6F6F6]" :scroll-y="true"
-          :scroll-top="scrollTop" @scroll="onScroll"
+          :scroll-top="scrollTop" :style="chatContentStyle" @scroll="onScroll"
         >
           <view id="msglistview" class="chat-body">
             <!-- 加载提示 -->
@@ -80,7 +80,7 @@
           </view>
         </scroll-view>
       </view>
-      <view class="chat-footer">
+      <view class="chat-footer" :style="chatFooterStyle">
         <view class="chat-bottom">
           <view class="send-msg">
             <view class="uni-textarea">
@@ -90,7 +90,7 @@
               <wd-textarea
                 ref="chatInputRef" v-model="htmlInput" class="chat-input-box" :maxlength="300"
                 confirm-type="send" placeholder="11请输入内容..." :disable-default-padding="true"
-                :show-confirm-bar="false" :adjust-position="true" auto-height @confirm="handleSend"
+                :show-confirm-bar="false" :adjust-position="false" auto-height @confirm="handleSend"
                 @linechange="sendHeight" @focus="focus" @blur="blur"
               />
             </view>
@@ -363,6 +363,14 @@ onLoad((options) => {
 
 onMounted(() => {
   getUserMessageListEvent()
+  uni.onKeyboardHeightChange(({ height }) => {
+    keyboardHeight.value = height
+    nextTick(() => {
+      updateChatFooterHeight()
+      scrollToBottom()
+    })
+  })
+
   setTimeout(() => {
     // 给内容区域计算高度
     setContentAreaHeightEvent()
@@ -371,6 +379,10 @@ onMounted(() => {
     // 定位到消息最底部
     scrollToBottom()
   })
+})
+
+onUnmounted(() => {
+  uni.offKeyboardHeightChange()
 })
 
 // 消息列表数据
@@ -389,6 +401,13 @@ const contentInfoHeight = ref(0)
 const chatContentHeight = ref(0)
 // 底部聊天区域高度
 const chatFooterHeight = ref(0)
+const keyboardHeight = ref(0)
+const chatContentStyle = computed(() => ({
+  paddingBottom: `${chatFooterHeight.value + keyboardHeight.value}px`,
+}))
+const chatFooterStyle = computed(() => ({
+  transform: keyboardHeight.value > 0 ? `translateY(-${keyboardHeight.value}px)` : 'translateY(0)',
+}))
 function setContentAreaHeightEvent() {
   uni.getSystemInfo({
     success(res) {
@@ -756,6 +775,7 @@ page {
 
 .chatContainer {
   height: calc(100vh - env(safe-area-inset-top));
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -868,10 +888,16 @@ page {
     }
 
     .chat-footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
       flex-shrink: 0;
       background: #fff;
       padding-bottom: env(safe-area-inset-bottom);
       box-sizing: border-box;
+      transition: transform 0.2s ease;
 
       .chat-bottom {
         width: 100%;
