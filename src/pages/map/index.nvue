@@ -1,0 +1,240 @@
+<template>
+  <view class="page">
+    <!-- 地图 -->
+    <map
+      class="map"
+      :latitude="center.latitude"
+      :longitude="center.longitude"
+      :scale="14"
+      :markers="markers"
+      :polyline="polylines"
+      show-location
+    />
+
+    <!-- 路线信息悬浮 -->
+    <view class="route-tip">
+      <text class="route-text">
+        {{ currentRoute.distance }} ｜ 预计 {{ currentRoute.duration }}
+      </text>
+    </view>
+
+    <!-- 底部面板 -->
+    <view class="route-panel">
+      <!-- 路线选择 -->
+      <view class="route-options">
+        <view
+          v-for="(item, index) in routes"
+          :key="index"
+          class="route-card"
+          :class="item.active ? 'route-card-active' : ''"
+          @click="selectRoute(index)"
+        >
+          <text class="time">{{ item.time }} 分钟</text>
+          <text class="label">{{ item.label }}</text>
+        </view>
+      </view>
+
+      <!-- 底部操作 -->
+      <view class="bottom-bar">
+        <text class="desc">
+          已选 {{ currentRoute.label }} ｜ 为你规划最优路线
+        </text>
+        <view class="btn">
+          <text class="btn-text">马上预约</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="ts" setup>
+import { ref, computed } from 'vue'
+definePage({
+  style: {
+    navigationBarTitleText: '地图',
+  },
+})
+
+interface RouteItem {
+  label: string
+  time: number
+  distance: string
+  duration: string
+  active: boolean
+  polyline: { latitude: number; longitude: number }[]
+}
+
+/* 地图中心点 */
+const center = ref({
+  latitude: 39.908823,
+  longitude: 116.39747
+})
+
+/* 起点 & 终点 */
+const markers = ref([
+  {
+    id: 1,
+    latitude: 39.915,
+    longitude: 116.404,
+    title: '起点'
+  },
+  {
+    id: 2,
+    latitude: 39.905,
+    longitude: 116.394,
+    title: '终点'
+  }
+])
+
+/* 路线方案 */
+const routes = ref<RouteItem[]>([
+  {
+    label: '推荐方案',
+    time: 55,
+    distance: '25.7 公里',
+    duration: '55 分钟',
+    active: true,
+    polyline: [
+      { latitude: 39.915, longitude: 116.404 },
+      { latitude: 39.91, longitude: 116.40 },
+      { latitude: 39.905, longitude: 116.394 }
+    ]
+  },
+  {
+    label: '备选方案',
+    time: 60,
+    distance: '25.7 公里',
+    duration: '60 分钟',
+    active: false,
+    polyline: [
+      { latitude: 39.915, longitude: 116.404 },
+      { latitude: 39.912, longitude: 116.41 },
+      { latitude: 39.905, longitude: 116.394 }
+    ]
+  }
+])
+
+/* 当前选中路线 */
+const currentRoute = computed(() => {
+  return routes.value.find(item => item.active) || routes.value[0]
+})
+
+/* 地图路线 */
+const polylines = computed(() => {
+  return [
+    {
+      points: currentRoute.value.polyline,
+      color: '#22c55e',
+      width: 8,
+      arrowLine: true
+    }
+  ]
+})
+
+/* 切换路线 */
+const selectRoute = (index: number) => {
+  routes.value.forEach((item, i) => {
+    item.active = i === index
+  })
+}
+</script>
+
+<style scoped>
+.page {
+  flex: 1;
+}
+
+.map {
+  flex: 1;
+}
+
+/* 顶部悬浮 */
+.route-tip {
+  position: absolute;
+  top: 80rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 16rpx 28rpx;
+  border-radius: 40rpx;
+}
+
+.route-text {
+  color: #fff;
+  font-size: 24rpx;
+}
+
+/* 底部面板 */
+.route-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  border-top-left-radius: 24rpx;
+  border-top-right-radius: 24rpx;
+}
+
+/* 路线选择 */
+.route-options {
+  flex-direction: row;
+  padding: 24rpx;
+}
+
+.route-card {
+  flex: 1;
+  border-width: 2rpx;
+  border-color: #eee;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  margin-right: 16rpx;
+  align-items: center;
+}
+
+.route-card:last-child {
+  margin-right: 0;
+}
+
+.route-card-active {
+  border-color: #ff7a00;
+  background-color: #fff7ed;
+}
+
+.time {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #ff7a00;
+}
+
+.label {
+  font-size: 22rpx;
+  color: #666;
+  margin-top: 6rpx;
+}
+
+/* 底部操作栏 */
+.bottom-bar {
+  flex-direction: row;
+  align-items: center;
+  padding: 20rpx 24rpx;
+  border-top-width: 1rpx;
+  border-color: #eee;
+}
+
+.desc {
+  flex: 1;
+  font-size: 24rpx;
+  color: #333;
+}
+
+.btn {
+  background-color: #ff7a00;
+  padding: 16rpx 32rpx;
+  border-radius: 40rpx;
+}
+
+.btn-text {
+  color: #fff;
+  font-size: 26rpx;
+}
+</style>
