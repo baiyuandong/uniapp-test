@@ -22,7 +22,7 @@
         <!-- 聊天区域 -->
         <scroll-view
           id="scrollview" class="chat-content-box bg-[#F6F6F6]" :scroll-y="true"
-          :scroll-top="scrollTop" @scroll="onScroll"
+          :scroll-top="scrollTop" :scroll-into-view="scrollIntoView" :scroll-with-animation="true" :style="chatContentStyle" @scroll="onScroll"
         >
           <view id="msglistview" class="chat-body">
             <!-- 加载提示 -->
@@ -77,10 +77,11 @@
                 </view>
               </view>
             </view>
+            <view id="chatBottomAnchor" class="chat-bottom-anchor" />
           </view>
         </scroll-view>
       </view>
-      <view class="chat-footer">
+      <view class="chat-footer" :style="chatFooterStyle">
         <view class="chat-bottom">
           <view class="send-msg">
             <view class="uni-textarea">
@@ -90,12 +91,12 @@
               <wd-textarea
                 ref="chatInputRef" v-model="htmlInput" class="chat-input-box" :maxlength="300"
                 confirm-type="send" placeholder="11请输入内容..." :disable-default-padding="true"
-                :show-confirm-bar="false" :adjust-position="true" auto-height @confirm="handleSend"
+                :show-confirm-bar="false" :adjust-position="false" auto-height @confirm="handleSend"
                 @linechange="sendHeight" @focus="focus" @blur="blur"
               />
             </view>
-            <wd-button type="icon" icon="chat" @click="openEmojiPanel" />
-            <wd-button type="icon" icon="add" @click="openTool" />
+            <wd-button custom-class="chat-action-btn" type="icon" icon="chat" @click="openEmojiPanel" />
+            <wd-button custom-class="chat-action-btn" type="icon" icon="add" @click="openTool" />
             <wd-button size="small" type="text" class="send-btn" @click="handleSend">
               发送1
             </wd-button>
@@ -341,18 +342,38 @@ const iconsList = ref([
 const rawInput = ref('') // 纯文本内容
 const htmlInput = ref('') // HTML 内容
 
+// 给内容区域计算高度
+const contentInfoHeight = ref(0)
+// 聊天内容区域高度（减去头部和底部）
+const chatContentHeight = ref(0)
+// 底部聊天区域高度
+const chatFooterHeight = ref(0)
+const keyboardHeight = ref(0)
+const chatContentStyle = computed(() => ({
+  paddingBottom: `${chatFooterHeight.value + keyboardHeight.value}px`,
+}))
+const chatFooterStyle = computed(() => ({
+  transform: keyboardHeight.value > 0 ? `translateY(-${keyboardHeight.value}px)` : 'translateY(0)',
+}))
+
 // Socket.IO 配置
 
 // 打开工具
+function hideInputKeyboard() {
+  uni.hideKeyboard()
+}
+
 function openTool() {
+  hideInputKeyboard()
   showEmojiPanel.value = false // 关闭图标
-  showTool.value = true
+  showTool.value = !showTool.value
 }
 
 // 打开图标
 function openEmojiPanel() {
+  hideInputKeyboard()
   showTool.value = false
-  showEmojiPanel.value = true
+  showEmojiPanel.value = !showEmojiPanel.value
 }
 
 // 消息id
@@ -363,6 +384,14 @@ onLoad((options) => {
 
 onMounted(() => {
   getUserMessageListEvent()
+  uni.onKeyboardHeightChange(({ height }) => {
+    keyboardHeight.value = height
+    nextTick(() => {
+      updateChatFooterHeight()
+      scrollToBottom()
+    })
+  })
+
   setTimeout(() => {
     // 给内容区域计算高度
     setContentAreaHeightEvent()
@@ -371,6 +400,10 @@ onMounted(() => {
     // 定位到消息最底部
     scrollToBottom()
   })
+})
+
+onUnmounted(() => {
+  uni.offKeyboardHeightChange()
 })
 
 // 消息列表数据
@@ -383,21 +416,15 @@ function getUserMessageListEvent() {
   msgList.value = []
 }
 
-// 给内容区域计算高度
-const contentInfoHeight = ref(0)
-// 聊天内容区域高度（减去头部和底部）
-const chatContentHeight = ref(0)
-// 底部聊天区域高度
-const chatFooterHeight = ref(0)
 function setContentAreaHeightEvent() {
   uni.getSystemInfo({
     success(res) {
-      let screenHeight = res.screenHeight
+      const screenHeight = res.screenHeight
       // 获取头部导航栏高度
       uni.createSelectorQuery().select('#navBarAreaBox').boundingClientRect((data) => {
         if (data && 'height' in data) {
-          let navBarHeight = data.height
-          let remainingHeight = screenHeight - navBarHeight
+          const navBarHeight = data.height
+          const remainingHeight = screenHeight - navBarHeight
           contentInfoHeight.value = remainingHeight
 
           // 获取底部聊天区域高度
@@ -468,6 +495,8 @@ function goback() {
 }
 
 function focus() {
+  showEmojiPanel.value = false
+  showTool.value = false
   scrollToBottom()
 }
 
@@ -476,15 +505,15 @@ function blur() {
 }
 
 function rpxTopx(px) {
-  let deviceWidth = uni.getSystemInfoSync().windowWidth
-  let rpx = (750 / deviceWidth) * Number(px)
+  const deviceWidth = uni.getSystemInfoSync().windowWidth
+  const rpx = (750 / deviceWidth) * Number(px)
   return Math.floor(rpx)
 }
 
 const bottomHeight = ref(0)
 function sendHeight() {
   setTimeout(() => {
-    let query = uni.createSelectorQuery()
+    const query = uni.createSelectorQuery()
     query.select('.send-msg').boundingClientRect()
     query.exec((res) => {
       if (res[0] && 'height' in res[0]) {
@@ -539,17 +568,19 @@ watch(showTool, (isOpen) => {
 
 // 点击发送要显示按键板
 const scrollTop = ref(0)
+const scrollIntoView = ref('')
 function scrollToBottom() {
-  setTimeout(() => {
-    let query = uni.createSelectorQuery().in(this)
-    query.select('#scrollview').boundingClientRect()
-    query.select('#msglistview').boundingClientRect()
-    query.exec((res) => {
-      if (res[1].height > res[0].height) {
-        scrollTop.value = rpxTopx(res[1].height - res[0].height)
-      }
-    })
-  }, 15)
+  nextTick(() => {
+    scrollIntoView.value = 'chatBottomAnchor'
+    setTimeout(() => {
+      scrollIntoView.value = ''
+      uni.createSelectorQuery().select('#scrollview').boundingClientRect().select('#msglistview').boundingClientRect().exec((res) => {
+        if (res[0] && res[1] && res[1].height > res[0].height) {
+          scrollTop.value = rpxTopx(res[1].height - res[0].height)
+        }
+      })
+    }, 30)
+  })
 }
 
 // 输入框输入事件
@@ -624,7 +655,7 @@ async function handleSend() {
     return
   }
 
-  let obj = {
+  const obj = {
     type: 0,
     content: '',
     userContent: msg, // 发送纯文本
@@ -697,7 +728,7 @@ function onScroll(e: any) {
 }
 
 // 保持滚动位置的函数
-let currentScrollHeight = 0
+const currentScrollHeight = 0
 function keepScrollPosition(newMsgCount: number) {
   setTimeout(() => {
     uni.createSelectorQuery()
@@ -756,6 +787,7 @@ page {
 
 .chatContainer {
   height: calc(100vh - env(safe-area-inset-top));
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -868,10 +900,16 @@ page {
     }
 
     .chat-footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
       flex-shrink: 0;
       background: #fff;
       padding-bottom: env(safe-area-inset-bottom);
       box-sizing: border-box;
+      transition: transform 0.2s ease;
 
       .chat-bottom {
         width: 100%;
@@ -880,6 +918,7 @@ page {
         .send-msg {
           display: flex;
           align-items: flex-end;
+          gap: 16rpx;
           padding: 28rpx 30rpx;
           width: 100%;
           box-sizing: border-box;
@@ -889,7 +928,7 @@ page {
           flex: 1;
           min-width: 0;
           .chat-input-box {
-            width: 500rpx;
+            width: 100%;
             min-height: 75rpx;
             max-height: 500rpx;
             background: #f1f1f1;
@@ -1011,5 +1050,12 @@ page {
 
 ::v-deep .wd-drop-menu__item-title::after {
   background: white !important;
+}
+::v-deep .chat-action-btn {
+  flex-shrink: 0;
+}
+
+.chat-bottom-anchor {
+  height: 1px;
 }
 </style>
