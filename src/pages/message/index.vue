@@ -19,12 +19,20 @@
       <view class="chat-content">
         <!-- 聊天区域 -->
         <scroll-view
-          id="scrollview" class="chat-content-box bg-[#F6F6F6]" :scroll-y="true"
-          :scroll-top="scrollTop" :style="chatContentStyle" @scroll="onScroll"
+          id="scrollview"
+          class="chat-content-box bg-[#F6F6F6]"
+          :scroll-y="true"
+          :scroll-top="scrollTop"
+          :scroll-into-view="scrollIntoView"
+          :style="chatContentStyle"
+          @scroll="onScroll"
         >
           <view id="msglistview" class="chat-body">
             <!-- 加载提示 -->
-            <view v-if="loadingHistory" class="loading-hint py-20rpx text-center text-24rpx text-gray-500">
+            <view
+              v-if="loadingHistory"
+              class="loading-hint py-20rpx text-center text-24rpx text-gray-500"
+            >
               正在加载历史记录...
             </view>
             <view
@@ -34,48 +42,79 @@
               已加载全部历史记录
             </view>
 
-            <view v-for="(item, index) in msgList" :key="index">
+            <view
+              v-for="(item, index) in msgList"
+              :key="
+                item.id
+                  || item.timestamp
+                  || `${item.sendUserId || 'msg'}-${index}`
+              "
+            >
               <!-- {{ item }} -->
               <!-- 自己发的消息 -->
-              <view v-if="item.type == 0 && item.childrenType == 0">
-                <view v-if="item.userContent != ''" class="item self">
-                  <view class="content right" v-html="item.userContent" />
-                  <image v-if="!item.image" class="avatar" src="/static/images/msg/defaultIcon.png" />
+              <view v-if="item.type === 0 && Number(item.childrenType) === 0">
+                <view v-if="item.userContent !== ''" class="item self">
+                  <rich-text class="content right" :nodes="item.userContent" />
+                  <image
+                    v-if="!item.image"
+                    class="avatar"
+                    src="/static/images/msg/defaultIcon.png"
+                  />
                   <image v-else class="avatar" :src="item.image" />
                 </view>
                 <!-- 机器人发的消息 -->
-                <view v-if="item.content != ''" class="item Ai">
-                  <image v-if="!item.image" class="avatar" src="/static/images/msg/defaultIcon.png" />
+                <view v-if="item.content !== ''" class="item Ai">
+                  <image
+                    v-if="!item.image"
+                    class="avatar"
+                    src="/static/images/msg/defaultIcon.png"
+                  />
                   <image v-else class="avatar" :src="item.image" />
-                  <view class="content left" v-html="item.content" />
+                  <rich-text class="content left" :nodes="item.content" />
                 </view>
               </view>
-              <view v-if="item.type == 5" class="text-center text-24rpx">
+              <view v-if="item.type === 5" class="text-center text-24rpx">
                 {{ item.content }}
               </view>
 
               <!-- 图片消息 -->
-              <view v-if="item.type == 0 && item.childrenType == 1">
-                <view v-if="item.userContent != ''" class="item self">
+              <view v-if="item.type === 0 && Number(item.childrenType) === 1">
+                <view v-if="item.userContent !== ''" class="item self">
                   <view class="content right image-message">
                     <image
-                      :src="item.content || item.userContent" mode="widthFix"
+                      :src="item.content || item.userContent"
+                      mode="widthFix"
                       class="h-100px w-100px"
                     />
                   </view>
-                  <image v-if="!item.image" class="avatar" src="/static/images/msg/defaultIcon.png" />
+                  <image
+                    v-if="!item.image"
+                    class="avatar"
+                    src="/static/images/msg/defaultIcon.png"
+                  />
                   <image v-else class="avatar" :src="item.image" />
                 </view>
-                <view v-if="item.content != ''" class="item Ai">
-                  <image v-if="!item.image" class="avatar" src="/static/images/msg/defaultIcon.png" />
+                <view v-if="item.content !== ''" class="item Ai">
+                  <image
+                    v-if="!item.image"
+                    class="avatar"
+                    src="/static/images/msg/defaultIcon.png"
+                  />
                   <image v-else class="avatar" :src="item.image" />
                   <view class="content left image-message">
-                    <image :src="item.content" mode="widthFix" class="h-100px w-100px" />
+                    <image
+                      :src="item.content"
+                      mode="widthFix"
+                      class="h-100px w-100px"
+                    />
                   </view>
                 </view>
               </view>
             </view>
-            <view id="chatBottomAnchor" class="chat-bottom-anchor" />
+            <view
+              :id="scrollIntoView || 'chatBottomAnchor'"
+              class="chat-bottom-anchor"
+            />
           </view>
         </scroll-view>
       </view>
@@ -84,15 +123,31 @@
           <view class="send-msg">
             <view class="uni-textarea">
               <wd-textarea
-                ref="chatInputRef" v-model="htmlInput" class="chat-input-box" :maxlength="300"
-                confirm-type="send" placeholder="请输入内容..." :disable-default-padding="true"
-                :show-confirm-bar="false" :adjust-position="false" auto-height
-                :no-border="true" @confirm="handleSend" @linechange="sendHeight" @focus="focus" @blur="blur"
+                ref="chatInputRef"
+                v-model="htmlInput"
+                class="chat-input-box"
+                :maxlength="300"
+                confirm-type="send"
+                placeholder="请输入内容..."
+                :disable-default-padding="true"
+                :show-confirm-bar="false"
+                :adjust-position="false"
+                auto-height
+                :no-border="true"
+                @confirm="handleSend"
+                @linechange="sendHeight"
+                @focus="focus"
+                @blur="blur"
               />
             </view>
             <wd-button type="icon" icon="chat" @click="openEmojiPanel" />
             <wd-button type="icon" icon="add" @click="openTool" />
-            <wd-button size="small" type="text" class="send-btn" @click="handleSend">
+            <wd-button
+              size="small"
+              type="text"
+              class="send-btn"
+              @click="handleSend"
+            >
               发送
             </wd-button>
           </view>
@@ -102,7 +157,8 @@
           <scroll-view scroll-y class="h-44">
             <view class="grid grid-cols-8 gap-3">
               <view
-                v-for="(item, index) in emojiList" :key="index"
+                v-for="(item, index) in emojiList"
+                :key="index"
                 class="h-8 w-8 flex items-center justify-center text-xl transition-transform active:scale-110"
                 @tap="addEmoji(item)"
               >
@@ -116,10 +172,16 @@
         <view v-if="showTool" class="h-44 pl-30rpx pr-30rpx">
           <scroll-view scroll-y class="h-44">
             <view class="grid grid-cols-4 gap-3">
-              <view v-for="(icon, index) in iconsList" :key="index" class="icon-item">
+              <view
+                v-for="(icon, index) in iconsList"
+                :key="index"
+                class="icon-item"
+              >
                 <wd-upload
-                  :file-list="fileList" action="/dst/service/file/v1/storage/upload"
-                  :header="uploadHeader" @change="handleChange"
+                  :file-list="fileList"
+                  action="/dst/service/file/v1/storage/upload"
+                  :header="uploadHeader"
+                  @change="handleChange"
                 >
                   <text class="icon">
                     {{ icon.emoji }}
@@ -140,7 +202,7 @@
 
 <script lang="ts" setup>
 import type { SocketConfig } from '@/utils/socket-io-manager'
-import { createChat, getChatPage } from '@/api/message'
+import { createChat } from '@/api/message'
 import { useSocket } from '@/store/connectSocket'
 import { useMessageStore } from '@/store/message'
 import { useTokenStore } from '@/store/token'
@@ -314,8 +376,7 @@ const hasMoreHistory = ref(true) // 是否还有更多历史记录
 const isFirstLoad = ref(true) // 是否是首次加载
 const historyQueryParams = reactive({
   pageNum: 0,
-  pageSize: 50,
-
+  pageSize: 20,
 })
 
 const iconsList = ref([
@@ -359,28 +420,6 @@ function openEmojiPanel() {
 
 // 消息id
 const messageId = ref('')
-onLoad((options) => {
-  messageId.value = options.ids
-})
-
-onMounted(() => {
-  getUserMessageListEvent()
-  uni.onKeyboardHeightChange(({ height }) => {
-    keyboardHeight.value = height - 20
-    nextTick(() => {
-      updateChatFooterHeight()
-      scrollToBottom()
-    })
-  })
-  setTimeout(() => {
-    // 给内容区域计算高度
-    setContentAreaHeightEvent()
-    // 初始化底部区域高度
-    updateChatFooterHeight()
-    // 定位到消息最底部
-    scrollToBottom()
-  })
-})
 
 // 消息列表数据
 const msgList = ref([])
@@ -388,46 +427,76 @@ const asUserList = ref([])
 const sessionType = ref()
 const historyMsgTotal = ref(0)
 
-// 底部聊天区域高度
-const keyboardHeight = ref(0)
-const chatContentStyle = computed(() => ({
-  paddingBottom: `${chatFooterHeight.value + keyboardHeight.value}px`,
-}))
-const chatFooterStyle = computed(() => ({
-  transform: keyboardHeight.value > 0 ? `translateY(-${keyboardHeight.value}px)` : 'translateY(0)',
-}))
-
-function getUserMessageListEvent() {
-  msgList.value = []
-}
-
 // 给内容区域计算高度
 const contentInfoHeight = ref(0)
 // 聊天内容区域高度（减去头部和底部）
 const chatContentHeight = ref(0)
 // 底部聊天区域高度
 const chatFooterHeight = ref(0)
+// 键盘高度
+const keyboardHeight = ref(0)
+const chatContentStyle = computed(() => ({
+  height: `${Math.max(chatContentHeight.value - keyboardHeight.value, 0)}px`,
+  paddingBottom: `${chatFooterHeight.value}px`,
+  boxSizing: 'border-box',
+}))
+const chatFooterStyle = computed(() => ({
+  transform:
+    keyboardHeight.value > 0
+      ? `translateY(-${keyboardHeight.value}px)`
+      : 'translateY(0)',
+}))
+
+onLoad((options) => {
+  messageId.value = options.ids
+})
+
+onMounted(() => {
+  getUserMessageListEvent()
+  uni.onKeyboardHeightChange(({ height }) => {
+    keyboardHeight.value = Math.max(height, 0)
+    nextTick(() => {
+      updateChatFooterHeight()
+      scrollToBottom(true)
+    })
+  })
+  setTimeout(() => {
+    setContentAreaHeightEvent()
+    updateChatFooterHeight()
+    scrollToBottom(true)
+  })
+})
+
+function getUserMessageListEvent() {
+  msgList.value = []
+}
 function setContentAreaHeightEvent() {
   uni.getSystemInfo({
     success(res) {
-      const screenHeight = res.screenHeight
-      // 获取头部导航栏高度
-      uni.createSelectorQuery().select('#navBarAreaBox').boundingClientRect((data) => {
-        if (data && 'height' in data) {
-          const navBarHeight = data.height
-          const remainingHeight = screenHeight - navBarHeight
+      const viewportHeight = res.windowHeight || res.screenHeight
+      uni
+        .createSelectorQuery()
+        .select('#navBarAreaBox')
+        .boundingClientRect((data) => {
+          const navBarHeight = data && 'height' in data ? data.height : 0
+          const remainingHeight = Math.max(viewportHeight - navBarHeight, 0)
           contentInfoHeight.value = remainingHeight
 
-          // 获取底部聊天区域高度
-          uni.createSelectorQuery().select('.chat-footer').boundingClientRect((footerData) => {
-            if (footerData && 'height' in footerData) {
-              chatFooterHeight.value = footerData.height
-              // 计算聊天内容区域高度：总剩余高度 - 底部区域高度
-              chatContentHeight.value = remainingHeight - footerData.height
-            }
-          }).exec()
-        }
-      }).exec()
+          uni
+            .createSelectorQuery()
+            .select('.chat-footer')
+            .boundingClientRect((footerData) => {
+              const footerHeight
+                = footerData && 'height' in footerData ? footerData.height : 0
+              chatFooterHeight.value = footerHeight
+              chatContentHeight.value = Math.max(
+                remainingHeight - footerHeight,
+                0,
+              )
+            })
+            .exec()
+        })
+        .exec()
     },
   })
 }
@@ -448,7 +517,9 @@ function handleChange(file) {
 
 // 申请客服
 function applicationCustomerService() {
-  socketManager.value.emit('please_customer', { sessionId: receiveUserId.value })
+  socketManager.value.emit('please_customer', {
+    sessionId: receiveUserId.value,
+  })
 }
 
 // 发送图片消息
@@ -470,7 +541,7 @@ function sendImageMessage(imageUrl: string, localPath: string) {
 
   // 滚动到底部
   setTimeout(() => {
-    scrollToBottom()
+    scrollToBottom(true)
   }, 100)
 
   // 发送到服务器
@@ -504,23 +575,25 @@ function goback() {
 }
 
 function focus() {
-  scrollToBottom()
+  isInputFocused.value = true
+  scrollToBottom(true)
 }
 
 function blur() {
-  scrollToBottom()
+  isInputFocused.value = false
+  scrollToBottom(true)
 }
 
 function rpxTopx(px) {
-  let deviceWidth = uni.getSystemInfoSync().windowWidth
-  let rpx = (750 / deviceWidth) * Number(px)
+  const deviceWidth = uni.getSystemInfoSync().windowWidth
+  const rpx = (750 / deviceWidth) * Number(px)
   return Math.floor(rpx)
 }
 
 const bottomHeight = ref(0)
 function sendHeight() {
   setTimeout(() => {
-    let query = uni.createSelectorQuery()
+    const query = uni.createSelectorQuery()
     query.select('.send-msg').boundingClientRect()
     query.exec((res) => {
       if (res[0] && 'height' in res[0]) {
@@ -534,11 +607,15 @@ function sendHeight() {
 
 // 更新底部聊天区域高度
 function updateChatFooterHeight() {
-  uni.createSelectorQuery().select('.chat-footer').boundingClientRect((data) => {
-    if (data && 'height' in data) {
-      chatFooterHeight.value = data.height
-    }
-  }).exec()
+  uni
+    .createSelectorQuery()
+    .select('.chat-footer')
+    .boundingClientRect((data) => {
+      if (data && 'height' in data) {
+        chatFooterHeight.value = data.height
+      }
+    })
+    .exec()
 }
 
 // 监听表情面板开关状态变化
@@ -576,16 +653,31 @@ watch(showTool, (isOpen) => {
 // 点击发送要显示按键板
 const scrollTop = ref(0)
 const scrollIntoView = ref('')
-function scrollToBottom() {
+const currentScrollTop = ref(0)
+const currentContentHeight = ref(0)
+let bottomAnchorSeq = 0
+function scrollToBottom(force = false) {
   nextTick(() => {
-    scrollIntoView.value = 'chatBottomAnchor'
+    const anchorId = `chatBottomAnchor-${(bottomAnchorSeq += 1)}`
+    scrollIntoView.value = anchorId
     setTimeout(() => {
-      scrollIntoView.value = ''
-      uni.createSelectorQuery().select('#scrollview').boundingClientRect().select('#msglistview').boundingClientRect().exec((res) => {
-        if (res[0] && res[1] && res[1].height > res[0].height) {
-          scrollTop.value = rpxTopx(res[1].height - res[0].height)
-        }
-      })
+      uni
+        .createSelectorQuery()
+        .select('#scrollview')
+        .boundingClientRect()
+        .select('#msglistview')
+        .boundingClientRect()
+        .exec((res) => {
+          if (res[0] && res[1]) {
+            const maxScrollTop = Math.max(res[1].height - res[0].height, 0)
+            if (force || maxScrollTop > scrollTop.value) {
+              scrollTop.value = maxScrollTop + 1
+            }
+          }
+          setTimeout(() => {
+            scrollIntoView.value = ''
+          }, 30)
+        })
     }, 30)
   })
 }
@@ -619,7 +711,7 @@ async function handleSend() {
     return
   }
 
-  let obj = {
+  const obj = {
     type: 0,
     content: '',
     userContent: msg, // 发送纯文本
@@ -646,7 +738,7 @@ async function handleSend() {
   }
   htmlInput.value = ''
 
-  scrollToBottom()
+  scrollToBottom(true)
 }
 
 // 添加表情到输入框
@@ -664,6 +756,97 @@ function addEmoji(emojiItem) {
 // 添加普通消息
 function addMessage(message) {
   messages.value.push(message)
+}
+
+function normalizeMessageList(messageList: any[]) {
+  return [...messageList].reverse().map((item: any) => {
+    const matchedUser = asUserList.value.find(
+      user => item.sendUserId === user.id,
+    )
+    const isSelf = item.sendUserId === userStore.userInfo.id
+    return {
+      ...item,
+      image: isSelf
+        ? userStore.userInfo.avatarLogo
+        : matchedUser
+          ? matchedUser.avatarLogo
+          : '',
+      userContent: isSelf ? item.content : '',
+      content: isSelf ? '' : item.content,
+    }
+  })
+}
+
+function applyHistoryMessages(messageList: any[]) {
+  if (messageList.length === 0) {
+    hasMoreHistory.value = false
+    loadingHistory.value = false
+    return
+  }
+
+  const normalizedMessageList = normalizeMessageList(messageList)
+
+  if (historyQueryParams.pageNum === 0) {
+    msgList.value = normalizedMessageList
+    nextTick(() => scrollToBottom(true))
+  }
+  else {
+    const previousScrollTop = currentScrollTop.value
+    const previousContentHeight = currentContentHeight.value
+    msgList.value.unshift(...normalizedMessageList)
+    nextTick(() => {
+      setTimeout(() => {
+        uni
+          .createSelectorQuery()
+          .select('#msglistview')
+          .boundingClientRect((rect: any) => {
+            if (rect) {
+              const newContentHeight = rect.height || 0
+              const delta = Math.max(
+                newContentHeight - previousContentHeight,
+                0,
+              )
+              scrollTop.value = previousScrollTop + delta
+            }
+          })
+          .exec()
+      }, 30)
+    })
+  }
+
+  if (messageList.length < historyQueryParams.pageSize) {
+    hasMoreHistory.value = false
+  }
+  else {
+    historyQueryParams.pageNum += 1
+  }
+  loadingHistory.value = false
+}
+
+function appendIncomingMessages(messageList: any[]) {
+  if (!Array.isArray(messageList) || messageList.length === 0)
+    return
+
+  const normalizedList = messageList.map((item: any) => {
+    const matchedUser = asUserList.value.find(
+      user => item.sendUserId === user.id,
+    )
+    const isSelf = item.sendUserId === userStore.userInfo.id
+    return {
+      ...item,
+      image: isSelf
+        ? userStore.userInfo.avatarLogo
+        : matchedUser
+          ? matchedUser.avatarLogo
+          : '',
+      userContent: isSelf ? item.content : '',
+      content: isSelf ? '' : item.content,
+      type: 0,
+    }
+  })
+
+  msgList.value.push(...normalizedList)
+  nextTick(() => scrollToBottom(true))
 }
 
 // 链接 socket
@@ -722,8 +905,6 @@ async function connect() {
     // 监听自定义消息事件
     socketManager.value.on('system', (data: any) => {
       console.log('系统消息:', data)
-      if (data && data.content) {
-      }
     })
 
     // 监听订单消息
@@ -737,7 +918,9 @@ async function connect() {
         // if (!data.messageList && !store.conversitionList) return
         // // 转换json
         historyMsgTotal.value = data.num
-        const messageList = Array.isArray(data.messageList) ? data.messageList : []
+        const messageList = Array.isArray(data.messageList)
+          ? data.messageList
+          : []
 
         if (messageList.length === 0) {
           // 没有更多历史记录
@@ -746,49 +929,7 @@ async function connect() {
           return
         }
 
-        const reversedMessageList = [...messageList].reverse()
-        // 循环
-        reversedMessageList.forEach((item: any) => {
-          const matchedUser = asUserList.value.find(user => item.sendUserId === user.id)
-          if (item.sendUserId == userStore.userInfo.id) {
-            item.image = userStore.userInfo.avatarLogo
-            item.userContent = item.content
-            item.content = ''
-          }
-          else {
-            item.image = matchedUser ? matchedUser.avatarLogo : ''
-            item.userContent = ''
-          }
-        })
-
-        // 如果是第一页，直接替换
-        if (historyQueryParams.pageNum === 0) {
-          msgList.value = reversedMessageList
-        }
-        else {
-          // 否则添加到开头
-          msgList.value.unshift(...reversedMessageList)
-        }
-
-        // 如果是首次加载，滚动到底部
-        if (historyQueryParams.pageNum === 0) {
-          setTimeout(() => {
-            scrollToBottom()
-          }, 100)
-        }
-        else {
-          // 如果是加载更多，保持当前位置
-          // keepScrollPosition(msgList.value.length);
-        }
-
-        // 更新页码
-        if (messageList.length < historyQueryParams.pageSize) {
-          hasMoreHistory.value = false
-        }
-        else {
-          historyQueryParams.pageNum += 1
-        }
-        loadingHistory.value = false
+        applyHistoryMessages(messageList)
       }
       // 已读消息
       if (data.type === 7) {
@@ -810,39 +951,21 @@ async function connect() {
       }
 
       // 申请客服介入消息
-      if (data.type === 5) {
-      }
 
       // 错误消息
-      if (data.type === 4) {
-      }
 
       // 客服消息
-      if (data.type === 3) {
-      }
 
       // 系统消息
-      if (data.type === 2) {
-      }
 
       // 群组消息
-      if (data.type === 1) {
-      }
 
       // 用户消息
       if (data.type === 0) {
         // 转换data
         if (!data.messageList)
           return
-        data.messageList.forEach((item) => {
-          const matchedUser = asUserList.value.find(user => item.sendUserId === user.id)
-          item.image = matchedUser ? matchedUser.avatarLogo : ''
-          item.userContent = ''
-          item.type = 0
-        })
-
-        msgList.value.push(...Array.isArray(data.messageList) ? data.messageList : [])
-        scrollToBottom()
+        appendIncomingMessages(data.messageList)
       }
     })
   }
@@ -893,8 +1016,6 @@ function connect2() {
     // 监听自定义消息事件
     socketManager.value.on('system', (data: any) => {
       console.log('系统消息:', data)
-      if (data && data.content) {
-      }
     })
 
     socketManager.value.on('pong', (data: any) => {
@@ -912,7 +1033,9 @@ function connect2() {
         // if (!data.messageList && !store.conversitionList) return
         // // 转换json
         historyMsgTotal.value = data.num
-        const messageList = Array.isArray(data.messageList) ? data.messageList : []
+        const messageList = Array.isArray(data.messageList)
+          ? data.messageList
+          : []
         if (messageList.length === 0) {
           // 没有更多历史记录
           hasMoreHistory.value = false
@@ -920,49 +1043,7 @@ function connect2() {
           return
         }
 
-        const reversedMessageList = [...messageList].reverse()
-        // 循环
-        reversedMessageList.forEach((item: any) => {
-          const matchedUser = asUserList.value.find(user => item.sendUserId === user.id)
-          if (item.sendUserId == userStore.userInfo.id) {
-            item.image = userStore.userInfo.avatarLogo
-            item.userContent = item.content
-            item.content = ''
-          }
-          else {
-            item.image = matchedUser ? matchedUser.avatarLogo : ''
-            item.userContent = ''
-          }
-        })
-
-        // 如果是第一页，直接替换
-        if (historyQueryParams.pageNum === 0) {
-          msgList.value = reversedMessageList
-        }
-        else {
-          // 否则添加到开头
-          msgList.value.unshift(...reversedMessageList)
-        }
-
-        // 如果是首次加载，滚动到底部
-        if (historyQueryParams.pageNum === 0) {
-          setTimeout(() => {
-            scrollToBottom()
-          }, 100)
-        }
-        else {
-          // 如果是加载更多，保持当前位置
-          // keepScrollPosition(msgList.value.length);
-        }
-
-        // 更新页码
-        if (messageList.length < historyQueryParams.pageSize) {
-          hasMoreHistory.value = false
-        }
-        else {
-          historyQueryParams.pageNum += 1
-        }
-        loadingHistory.value = false
+        applyHistoryMessages(messageList)
       }
       // 已读消息
       if (data.type === 7) {
@@ -984,39 +1065,21 @@ function connect2() {
       }
 
       // 申请客服介入消息
-      if (data.type === 5) {
-      }
 
       // 错误消息
-      if (data.type === 4) {
-      }
 
       // 客服消息
-      if (data.type === 3) {
-      }
 
       // 系统消息
-      if (data.type === 2) {
-      }
 
       // 群组消息
-      if (data.type === 1) {
-      }
 
       // 用户消息
       if (data.type === 0) {
         // 转换data
         if (!data.messageList)
           return
-        data.messageList.forEach((item) => {
-          const matchedUser = asUserList.value.find(user => item.sendUserId === user.id)
-          item.image = matchedUser ? matchedUser.avatarLogo : ''
-          item.userContent = ''
-          item.type = 0
-        })
-
-        msgList.value.push(...Array.isArray(data.messageList) ? data.messageList : [])
-        scrollToBottom()
+        appendIncomingMessages(data.messageList)
       }
     })
   }
@@ -1051,67 +1114,65 @@ function sendMessage(msg) {
 
 // 获取历史消息
 function queryHistoryMsg(isFirstLoad = false) {
-  if (loadingHistory.value || !hasMoreHistory.value)
+  if (
+    loadingHistory.value
+    || !hasMoreHistory.value
+    || !socketManager.value
+    || !receiveUserId.value
+  ) {
     return
+  }
 
   loadingHistory.value = true
 
-  const message = { sessionId: receiveUserId.value, pageNum: historyQueryParams.pageNum, pageSize: historyQueryParams.pageSize }
+  const message = {
+    sessionId: receiveUserId.value,
+    pageNum: historyQueryParams.pageNum,
+    pageSize: historyQueryParams.pageSize,
+  }
   socketManager.value.emit('history_session', message)
 }
 
 // 添加滚动监听函数
 function onScroll(e: any) {
-  const { scrollTop } = e.detail
+  const { scrollTop: top } = e.detail
+  currentScrollTop.value = top
 
-  // 滚动到顶部时加载更多历史记录
-  if (scrollTop === 0 && hasMoreHistory.value && !loadingHistory.value) {
-    console.log('滚动到顶部，加载更多历史记录')
+  uni
+    .createSelectorQuery()
+    .select('#msglistview')
+    .boundingClientRect((rect: any) => {
+      currentContentHeight.value = rect?.height || 0
+    })
+    .exec()
+
+  if (top <= 4 && hasMoreHistory.value && !loadingHistory.value) {
     loadMoreHistory()
   }
 }
 
-// 加载更多历史记录
 function loadMoreHistory() {
   if (loadingHistory.value || !hasMoreHistory.value)
     return
 
-  // 记录当前第一条消息的位置
-  const firstMsgIndex = 0
-
-  // 获取当前scroll-view的高度
-  uni.createSelectorQuery()
-    .select('#scrollview')
+  uni
+    .createSelectorQuery()
+    .select('#msglistview')
     .boundingClientRect((rect: any) => {
-      if (rect) {
-        // 记录当前滚动位置相关数据
-        currentScrollHeight = rect.height
-
-        // 触发加载
-        queryHistoryMsg()
-      }
+      currentContentHeight.value = rect?.height || 0
+      queryHistoryMsg()
     })
     .exec()
 }
 
-// 保持滚动位置的函数
-let currentScrollHeight = 0
-function keepScrollPosition(newMsgCount: number) {
-  setTimeout(() => {
-    uni.createSelectorQuery()
-      .select('#msglistview')
-      .boundingClientRect((rect: any) => {
-        if (rect) {
-          // 计算新消息的高度
-          const newContentHeight = rect.height
-
-          // 设置新的滚动位置，使内容保持在原位置
-          scrollTop.value = rpxTopx(newContentHeight - currentScrollHeight)
-        }
-      })
-      .exec()
-  }, 50)
-}
+watch(
+  [() => msgList.value.length, keyboardHeight, chatFooterHeight],
+  ([length]) => {
+    if (length > 0 && (isInputFocused.value || keyboardHeight.value > 0)) {
+      nextTick(() => scrollToBottom(true))
+    }
+  },
+)
 
 // 重置分页状态
 function resetPagination() {
@@ -1124,11 +1185,11 @@ function resetPagination() {
 
 // 创建聊天会话
 function createConversation() {
-  createChat({ contactId: '1745881bfe664764b6ba61501c94900b' }).then((res) => {
-
-  }).catch((error) => {
-    console.log(error)
-  })
+  createChat({ contactId: '1745881bfe664764b6ba61501c94900b' })
+    .then((res) => {})
+    .catch((error) => {
+      console.log(error)
+    })
 }
 
 // 页面隐藏的时候
