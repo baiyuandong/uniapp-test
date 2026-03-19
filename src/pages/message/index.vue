@@ -1,22 +1,20 @@
 <template>
-  <wd-navbar id="navBarAreaBox" safe-area-inset-top placeholder fixed class="bg-white" @click-left="goback">
-    <template #left>
-      <wd-icon class="icon-left" name="thin-arrow-left" size="18" color="#000" />
-    </template>
-    <template #right>
-      <wd-drop-menu :modal="false">
-        <wd-drop-menu-item title="" icon="ellipsis" icon-size="16px">
-          <wd-button type="text" @click="applicationCustomerService">
-            申请客服介入
-          </wd-button>
-        </wd-drop-menu-item>
-      </wd-drop-menu>
-    </template>
-    <template #title>
-      <wd-navbar id="navbarBox" title="聊天" />
-    </template>
-  </wd-navbar>
-  <view class="chatContainer w-100% bg-[#F6F6F6]">
+  <!-- <wd-navbar fixed safeAreaInsetTop placeholder class="bg-white" id="navBarAreaBox" @click-left="goback">
+		<template #left>
+			<wd-icon class="icon-left" name="thin-arrow-left" size="18" color="#000" />
+		</template>
+		<template #right>
+			<wd-drop-menu :modal="false">
+				<wd-drop-menu-item title="" icon="ellipsis" icon-size="16px">
+					<wd-button type="text" @click="applicationCustomerService">申请客服介入</wd-button>
+				</wd-drop-menu-item>
+			</wd-drop-menu>
+		</template>
+		<template #title>
+			<wd-navbar title="聊天" id="navbarBox"></wd-navbar>
+		</template>
+	</wd-navbar> -->
+  <view class="chatContainer w-100% bg-[#EDEDED]">
     <view class="pb-chat-container flex flex-col justify-between">
       <view class="chat-content">
         <!-- 聊天区域 -->
@@ -85,35 +83,20 @@
         <view class="chat-bottom">
           <view class="send-msg">
             <view class="uni-textarea">
-              <!-- <amlx-face-editor class="chat-input-box" ref="editorRef" v-model="htmlInput"
-								placeholder="请输入内容..." @focus="onInputFocus" @hasContent="hasContent" @onInput="onInput"
-								@keydown="onKeyDown" /> -->
               <wd-textarea
                 ref="chatInputRef" v-model="htmlInput" class="chat-input-box" :maxlength="300"
-                confirm-type="send" placeholder="11请输入内容..." :disable-default-padding="true"
-                :show-confirm-bar="false" :adjust-position="false" auto-height @confirm="handleSend"
-                @linechange="sendHeight" @focus="focus" @blur="blur"
+                confirm-type="send" placeholder="请输入内容..." :disable-default-padding="true"
+                :show-confirm-bar="false" :adjust-position="false" auto-height
+                :no-border="true" @confirm="handleSend" @linechange="sendHeight" @focus="focus" @blur="blur"
               />
             </view>
-            <wd-button custom-class="chat-action-btn" type="icon" icon="chat" @click="openEmojiPanel" />
-            <wd-button custom-class="chat-action-btn" type="icon" icon="add" @click="openTool" />
+            <wd-button type="icon" icon="chat" @click="openEmojiPanel" />
+            <wd-button type="icon" icon="add" @click="openTool" />
             <wd-button size="small" type="text" class="send-btn" @click="handleSend">
-              发送1
+              发送
             </wd-button>
           </view>
         </view>
-        <!-- 表情面板 旧版富文本使用，使用图片 -->
-        <!-- <view v-if="showEmojiPanel" class="h-44 pl-30rpx pr-30rpx">
-					<scroll-view scroll-y class="h-44">
-						<view class="grid grid-cols-8 gap-3">
-							<view v-for="(item, index) in emoji" :key="index"
-								class="w-8 h-8 flex items-center justify-center text-xl active:scale-110 transition-transform"
-								@tap="addEmoji(item)">
-								<image :src="'/static' + item.icon" class="w-8 h-8" mode="aspectFit" />
-							</view>
-						</view>
-					</scroll-view>
-				</view> -->
         <!-- 表情面板 -->
         <view v-if="showEmojiPanel" class="h-44 pl-30rpx pr-30rpx">
           <scroll-view scroll-y class="h-44">
@@ -156,19 +139,20 @@
 </template>
 
 <script lang="ts" setup>
-// import { SocketIOManager, SocketConfig } from '@/utils/socket-io-manager';
+import type { SocketConfig } from '@/utils/socket-io-manager'
+import { createChat, getChatPage } from '@/api/message'
+import { useSocket } from '@/store/connectSocket'
+import { useMessageStore } from '@/store/message'
 import { useTokenStore } from '@/store/token'
 import { useUserStore } from '@/store/user'
+import { SocketIOManager } from '@/utils/socket-io-manager'
 
 defineOptions({
   name: 'MessageChatPage',
 })
-// import { getChatPage, createChat } from '@/api/message'
-// import { useSocket } from '@/store/connectSocket'
 const tokenStore = useTokenStore()
-// const accessToken = tokenStore.getAccessToken()
-// import { useMessageStore } from '@/store/message'
-// const messageStore = useMessageStore()
+const accessToken = tokenStore.getAccessToken()
+const messageStore = useMessageStore()
 
 const showEmojiPanel = ref<boolean>(false)
 const chatInputRef = ref<HTMLElement | null>(null) // 添加输入框引用
@@ -303,16 +287,17 @@ const emojiList = ref<string[]>([
 
 definePage({
   style: {
-    navigationStyle: 'custom',
+    // navigationStyle: 'custom',
     navigationBarTitleText: '聊天',
   },
 })
 
 const uploadHeader = {
-  'Authorization': `Bearer 111`,
+  'Authorization': `Bearer ${accessToken}`,
   'Sign-in': import.meta.env.VITE_CLIENT_TOKEN_KEY,
 }
 
+const socketManager = ref<SocketIOManager | null>(null)
 const showTool = ref(false)
 const fileList = ref([])
 
@@ -342,27 +327,23 @@ const iconsList = ref([
 const rawInput = ref('') // 纯文本内容
 const htmlInput = ref('') // HTML 内容
 
-// 给内容区域计算高度
-const contentInfoHeight = ref(0)
-// 聊天内容区域高度（减去头部和底部）
-const chatContentHeight = ref(0)
-// 底部聊天区域高度
-const chatFooterHeight = ref(0)
-const keyboardHeight = ref(0)
-const chatContentStyle = computed(() => ({
-  paddingBottom: `${chatFooterHeight.value + keyboardHeight.value}px`,
-}))
-const chatFooterStyle = computed(() => ({
-  transform: keyboardHeight.value > 0 ? `translateY(-${keyboardHeight.value}px)` : 'translateY(0)',
-}))
-
 // Socket.IO 配置
+const socketConfig: SocketConfig = {
+  reconnection: true,
+  reconnectionAttempts: 3,
+  reconnectionDelay: 3000,
+  auth: { authToken: `${accessToken}|WS` },
+  query: {
+    st: `${accessToken}|WS`,
+  },
+}
 
 // 打开工具
 function hideInputKeyboard() {
   uni.hideKeyboard()
 }
 
+// 打开工具
 function openTool() {
   hideInputKeyboard()
   showEmojiPanel.value = false // 关闭图标
@@ -385,13 +366,12 @@ onLoad((options) => {
 onMounted(() => {
   getUserMessageListEvent()
   uni.onKeyboardHeightChange(({ height }) => {
-    keyboardHeight.value = height
+    keyboardHeight.value = height - 20
     nextTick(() => {
       updateChatFooterHeight()
       scrollToBottom()
     })
   })
-
   setTimeout(() => {
     // 给内容区域计算高度
     setContentAreaHeightEvent()
@@ -402,15 +382,20 @@ onMounted(() => {
   })
 })
 
-onUnmounted(() => {
-  uni.offKeyboardHeightChange()
-})
-
 // 消息列表数据
 const msgList = ref([])
 const asUserList = ref([])
 const sessionType = ref()
 const historyMsgTotal = ref(0)
+
+// 底部聊天区域高度
+const keyboardHeight = ref(0)
+const chatContentStyle = computed(() => ({
+  paddingBottom: `${chatFooterHeight.value + keyboardHeight.value}px`,
+}))
+const chatFooterStyle = computed(() => ({
+  transform: keyboardHeight.value > 0 ? `translateY(-${keyboardHeight.value}px)` : 'translateY(0)',
+}))
 
 function getUserMessageListEvent() {
   msgList.value = []
@@ -422,13 +407,6 @@ const contentInfoHeight = ref(0)
 const chatContentHeight = ref(0)
 // 底部聊天区域高度
 const chatFooterHeight = ref(0)
-const keyboardHeight = ref(0)
-const chatContentStyle = computed(() => ({
-  paddingBottom: `${chatFooterHeight.value + keyboardHeight.value}px`,
-}))
-const chatFooterStyle = computed(() => ({
-  transform: keyboardHeight.value > 0 ? `translateY(-${keyboardHeight.value}px)` : 'translateY(0)',
-}))
 function setContentAreaHeightEvent() {
   uni.getSystemInfo({
     success(res) {
@@ -468,6 +446,11 @@ function handleChange(file) {
   sendImageMessage(response.data?.presUrl, response.data?.presUrl)
 }
 
+// 申请客服
+function applicationCustomerService() {
+  socketManager.value.emit('please_customer', { sessionId: receiveUserId.value })
+}
+
 // 发送图片消息
 function sendImageMessage(imageUrl: string, localPath: string) {
   // 先添加到本地消息列表显示
@@ -500,6 +483,19 @@ function sendImageMessage(imageUrl: string, localPath: string) {
     sessionId: receiveUserId.value,
     childrenType: '1', // 1 图片消息
   }
+
+  // 通过WebSocket发送
+  if (socketManager.value) {
+    socketManager.value.emit('message_event', message)
+    console.log('已发送图片消息到服务器:', message)
+  }
+  else {
+    console.error('WebSocket未连接，无法发送图片消息')
+    uni.showToast({
+      title: '发送失败，请检查网络连接',
+      icon: 'none',
+    })
+  }
 }
 
 // 返回
@@ -508,8 +504,6 @@ function goback() {
 }
 
 function focus() {
-  showEmojiPanel.value = false
-  showTool.value = false
   scrollToBottom()
 }
 
@@ -518,15 +512,15 @@ function blur() {
 }
 
 function rpxTopx(px) {
-  const deviceWidth = uni.getSystemInfoSync().windowWidth
-  const rpx = (750 / deviceWidth) * Number(px)
+  let deviceWidth = uni.getSystemInfoSync().windowWidth
+  let rpx = (750 / deviceWidth) * Number(px)
   return Math.floor(rpx)
 }
 
 const bottomHeight = ref(0)
 function sendHeight() {
   setTimeout(() => {
-    const query = uni.createSelectorQuery()
+    let query = uni.createSelectorQuery()
     query.select('.send-msg').boundingClientRect()
     query.exec((res) => {
       if (res[0] && 'height' in res[0]) {
@@ -596,49 +590,6 @@ function scrollToBottom() {
   })
 }
 
-// 输入框输入事件
-function onInput(e: Event) {
-  const target = e.target as HTMLElement
-  if (!target)
-    return
-  // 自动调整高度
-  autoResize()
-}
-
-// 输入框聚焦事件
-function onInputFocus() {
-  isInputFocused.value = true
-  showEmojiPanel.value = false
-  focus() // 调用原来的focus方法
-}
-
-// 输入框失焦事件
-function onInputBlur() {
-  isInputFocused.value = false
-  blur() // 调用原来的blur方法
-}
-
-// 粘贴事件处理
-function onPaste(e: ClipboardEvent) {
-  e.preventDefault()
-  const text = e.clipboardData?.getData('text/plain') || ''
-  document.execCommand('insertText', false, text)
-}
-
-// 按键事件处理
-function onKeyDown(e: KeyboardEvent) {
-  // 处理回车键
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    handleSend()
-  }
-  // Shift + Enter 换行
-  else if (e.key === 'Enter' && e.shiftKey) {
-    e.preventDefault()
-    document.execCommand('insertHTML', false, '<br>')
-  }
-}
-
 // 自动调整输入框高度
 function autoResize() {
   if (!chatInputRef.value)
@@ -668,7 +619,7 @@ async function handleSend() {
     return
   }
 
-  const obj = {
+  let obj = {
     type: 0,
     content: '',
     userContent: msg, // 发送纯文本
@@ -676,6 +627,13 @@ async function handleSend() {
     childrenType: 0,
   }
   msgList.value.push(obj)
+
+  try {
+    await sendMessage(msg)
+  }
+  catch (error) {
+    console.error('Error adding message:', error)
+  }
 
   // 清空输入框
   if (chatInputRef.value) {
@@ -708,6 +666,365 @@ function addMessage(message) {
   messages.value.push(message)
 }
 
+// 链接 socket
+async function connect() {
+  try {
+    socketManager.value = messageStore.getCachedSocketManager()
+
+    // 如果缓存中没有 socketManager，则创建新连接
+    if (!socketManager.value) {
+      console.log('缓存中未找到 Socket 连接，开始创建新连接...')
+
+      // 调用 useSocket 的 connect 方法并等待连接完成
+      await new Promise<void>((resolve, reject) => {
+        try {
+          const { connect: connectSocket, isConnected } = useSocket()
+          connectSocket()
+
+          // 监听连接状态，连接成功后 resolve
+          const checkConnection = setInterval(() => {
+            if (isConnected.value) {
+              clearInterval(checkConnection)
+              socketManager.value = messageStore.getCachedSocketManager()
+              console.log('Socket 连接成功')
+              resolve()
+            }
+          }, 100)
+
+          // 设置超时时间，避免无限等待
+          setTimeout(() => {
+            clearInterval(checkConnection)
+            if (!socketManager.value) {
+              reject(new Error('Socket 连接超时'))
+            }
+          }, 5000)
+        }
+        catch (error) {
+          reject(error)
+        }
+      })
+    }
+
+    // 确保 socketManager.value 已赋值
+    if (!socketManager.value) {
+      uni.showToast({
+        title: 'Socket 连接失败',
+        icon: 'none',
+      })
+      return
+    }
+
+    if (isFirstLoad.value) {
+      queryHistoryMsg(true)
+      isFirstLoad.value = false
+    }
+
+    // 监听自定义消息事件
+    socketManager.value.on('system', (data: any) => {
+      console.log('系统消息:', data)
+      if (data && data.content) {
+      }
+    })
+
+    // 监听订单消息
+    socketManager.value.on('user_event_message', (data: any) => {
+      // 聊天历史记录
+      if (data.type === 9) {
+        uni.setStorageSync(receiveUserId.value, data.messageList)
+      }
+      if (data.type === 8) {
+        // 将未读写入store
+        // if (!data.messageList && !store.conversitionList) return
+        // // 转换json
+        historyMsgTotal.value = data.num
+        const messageList = Array.isArray(data.messageList) ? data.messageList : []
+
+        if (messageList.length === 0) {
+          // 没有更多历史记录
+          hasMoreHistory.value = false
+          loadingHistory.value = false
+          return
+        }
+
+        const reversedMessageList = [...messageList].reverse()
+        // 循环
+        reversedMessageList.forEach((item: any) => {
+          const matchedUser = asUserList.value.find(user => item.sendUserId === user.id)
+          if (item.sendUserId == userStore.userInfo.id) {
+            item.image = userStore.userInfo.avatarLogo
+            item.userContent = item.content
+            item.content = ''
+          }
+          else {
+            item.image = matchedUser ? matchedUser.avatarLogo : ''
+            item.userContent = ''
+          }
+        })
+
+        // 如果是第一页，直接替换
+        if (historyQueryParams.pageNum === 0) {
+          msgList.value = reversedMessageList
+        }
+        else {
+          // 否则添加到开头
+          msgList.value.unshift(...reversedMessageList)
+        }
+
+        // 如果是首次加载，滚动到底部
+        if (historyQueryParams.pageNum === 0) {
+          setTimeout(() => {
+            scrollToBottom()
+          }, 100)
+        }
+        else {
+          // 如果是加载更多，保持当前位置
+          // keepScrollPosition(msgList.value.length);
+        }
+
+        // 更新页码
+        if (messageList.length < historyQueryParams.pageSize) {
+          hasMoreHistory.value = false
+        }
+        else {
+          historyQueryParams.pageNum += 1
+        }
+        loadingHistory.value = false
+      }
+      // 已读消息
+      if (data.type === 7) {
+        // 创建会话
+        // if (!store.unRead) return
+        // let num = 0
+        // store.unRead.messageList.forEach((unItem: any) => {
+        // 	if (unItem.id == store.sessionSelectId) {
+        // 		num = unItem.num
+        // 		unItem.num = 0
+        // 	}
+        // })
+        // store.unRead.num = -num
+      }
+      // 未读消息
+      if (data.type === 6) {
+        // 将未读写入store
+        // store.unRead = data
+      }
+
+      // 申请客服介入消息
+      if (data.type === 5) {
+      }
+
+      // 错误消息
+      if (data.type === 4) {
+      }
+
+      // 客服消息
+      if (data.type === 3) {
+      }
+
+      // 系统消息
+      if (data.type === 2) {
+      }
+
+      // 群组消息
+      if (data.type === 1) {
+      }
+
+      // 用户消息
+      if (data.type === 0) {
+        // 转换data
+        if (!data.messageList)
+          return
+        data.messageList.forEach((item) => {
+          const matchedUser = asUserList.value.find(user => item.sendUserId === user.id)
+          item.image = matchedUser ? matchedUser.avatarLogo : ''
+          item.userContent = ''
+          item.type = 0
+        })
+
+        msgList.value.push(...Array.isArray(data.messageList) ? data.messageList : [])
+        scrollToBottom()
+      }
+    })
+  }
+  catch (error) {
+    console.error('Socket.IO 初始化失败:', error)
+  }
+}
+
+function connect2() {
+  try {
+    if (socketManager.value) {
+      socketManager.value.destroy()
+    }
+
+    socketManager.value = new SocketIOManager(socketConfig)
+    socketManager.value.initialize()
+
+    // 监听系统事件
+    socketManager.value.on('connect', (id: string) => {
+      console.log('连接成功，ID:', id)
+      isConnected.value = true
+      socketId.value = id
+      // 连接成功后立即加载历史记录
+      // messageStore.setSocketManager(socketManager.value as SocketIOManager)
+
+      if (isFirstLoad.value) {
+        queryHistoryMsg(true)
+        isFirstLoad.value = false
+      }
+    })
+
+    socketManager.value.on('disconnect', (reason: string) => {
+      console.log('断开连接:', reason)
+      isConnected.value = false
+      socketId.value = ''
+      // 断开连接时清除缓存
+      messageStore.clearCachedSocketManager()
+    })
+
+    socketManager.value.on('connect_error', (error: string) => {
+      console.error('连接错误:', error)
+    })
+
+    socketManager.value.on('reconnect', (attempt: number) => {
+      console.log('重连成功:', attempt)
+    })
+
+    // 监听自定义消息事件
+    socketManager.value.on('system', (data: any) => {
+      console.log('系统消息:', data)
+      if (data && data.content) {
+      }
+    })
+
+    socketManager.value.on('pong', (data: any) => {
+      console.log('收到Pong响应:', data)
+    })
+
+    // 监听订单消息
+    socketManager.value.on('user_event_message', (data: any) => {
+      // 聊天历史记录
+      if (data.type === 9) {
+        uni.setStorageSync(receiveUserId.value, data.messageList)
+      }
+      if (data.type === 8) {
+        // 将未读写入store
+        // if (!data.messageList && !store.conversitionList) return
+        // // 转换json
+        historyMsgTotal.value = data.num
+        const messageList = Array.isArray(data.messageList) ? data.messageList : []
+        if (messageList.length === 0) {
+          // 没有更多历史记录
+          hasMoreHistory.value = false
+          loadingHistory.value = false
+          return
+        }
+
+        const reversedMessageList = [...messageList].reverse()
+        // 循环
+        reversedMessageList.forEach((item: any) => {
+          const matchedUser = asUserList.value.find(user => item.sendUserId === user.id)
+          if (item.sendUserId == userStore.userInfo.id) {
+            item.image = userStore.userInfo.avatarLogo
+            item.userContent = item.content
+            item.content = ''
+          }
+          else {
+            item.image = matchedUser ? matchedUser.avatarLogo : ''
+            item.userContent = ''
+          }
+        })
+
+        // 如果是第一页，直接替换
+        if (historyQueryParams.pageNum === 0) {
+          msgList.value = reversedMessageList
+        }
+        else {
+          // 否则添加到开头
+          msgList.value.unshift(...reversedMessageList)
+        }
+
+        // 如果是首次加载，滚动到底部
+        if (historyQueryParams.pageNum === 0) {
+          setTimeout(() => {
+            scrollToBottom()
+          }, 100)
+        }
+        else {
+          // 如果是加载更多，保持当前位置
+          // keepScrollPosition(msgList.value.length);
+        }
+
+        // 更新页码
+        if (messageList.length < historyQueryParams.pageSize) {
+          hasMoreHistory.value = false
+        }
+        else {
+          historyQueryParams.pageNum += 1
+        }
+        loadingHistory.value = false
+      }
+      // 已读消息
+      if (data.type === 7) {
+        // 创建会话
+        // if (!store.unRead) return
+        // let num = 0
+        // store.unRead.messageList.forEach((unItem: any) => {
+        // 	if (unItem.id == store.sessionSelectId) {
+        // 		num = unItem.num
+        // 		unItem.num = 0
+        // 	}
+        // })
+        // store.unRead.num = -num
+      }
+      // 未读消息
+      if (data.type === 6) {
+        // 将未读写入store
+        // store.unRead = data
+      }
+
+      // 申请客服介入消息
+      if (data.type === 5) {
+      }
+
+      // 错误消息
+      if (data.type === 4) {
+      }
+
+      // 客服消息
+      if (data.type === 3) {
+      }
+
+      // 系统消息
+      if (data.type === 2) {
+      }
+
+      // 群组消息
+      if (data.type === 1) {
+      }
+
+      // 用户消息
+      if (data.type === 0) {
+        // 转换data
+        if (!data.messageList)
+          return
+        data.messageList.forEach((item) => {
+          const matchedUser = asUserList.value.find(user => item.sendUserId === user.id)
+          item.image = matchedUser ? matchedUser.avatarLogo : ''
+          item.userContent = ''
+          item.type = 0
+        })
+
+        msgList.value.push(...Array.isArray(data.messageList) ? data.messageList : [])
+        scrollToBottom()
+      }
+    })
+  }
+  catch (error) {
+    console.error('Socket.IO 初始化失败:', error)
+  }
+}
+
 // 发送消息-切换需求类型或者修改分页数量
 function sendMessage(msg) {
   // createConversation()
@@ -727,6 +1044,20 @@ function sendMessage(msg) {
   addMessage({
     ...message,
   })
+
+  // 发送到服务器
+  socketManager.value.emit('message_event', message)
+}
+
+// 获取历史消息
+function queryHistoryMsg(isFirstLoad = false) {
+  if (loadingHistory.value || !hasMoreHistory.value)
+    return
+
+  loadingHistory.value = true
+
+  const message = { sessionId: receiveUserId.value, pageNum: historyQueryParams.pageNum, pageSize: historyQueryParams.pageSize }
+  socketManager.value.emit('history_session', message)
 }
 
 // 添加滚动监听函数
@@ -740,8 +1071,31 @@ function onScroll(e: any) {
   }
 }
 
+// 加载更多历史记录
+function loadMoreHistory() {
+  if (loadingHistory.value || !hasMoreHistory.value)
+    return
+
+  // 记录当前第一条消息的位置
+  const firstMsgIndex = 0
+
+  // 获取当前scroll-view的高度
+  uni.createSelectorQuery()
+    .select('#scrollview')
+    .boundingClientRect((rect: any) => {
+      if (rect) {
+        // 记录当前滚动位置相关数据
+        currentScrollHeight = rect.height
+
+        // 触发加载
+        queryHistoryMsg()
+      }
+    })
+    .exec()
+}
+
 // 保持滚动位置的函数
-const currentScrollHeight = 0
+let currentScrollHeight = 0
 function keepScrollPosition(newMsgCount: number) {
   setTimeout(() => {
     uni.createSelectorQuery()
@@ -768,11 +1122,32 @@ function resetPagination() {
   msgList.value = []
 }
 
+// 创建聊天会话
+function createConversation() {
+  createChat({ contactId: '1745881bfe664764b6ba61501c94900b' }).then((res) => {
+
+  }).catch((error) => {
+    console.log(error)
+  })
+}
+
 // 页面隐藏的时候
 onHide(() => {
+  if (socketManager.value) {
+    // socketManager.value.destroy();
+  }
+  // 清空缓存里的内容
+  uni.removeStorage(receiveUserId.value)
 })
 
 onShow(() => {
+  // 加载消息列表
+  if (socketManager.value) {
+    return
+  }
+  historyQueryParams.pageNum = 0
+  msgList.value = []
+  connect()
 })
 
 onLoad((options) => {
@@ -804,6 +1179,7 @@ page {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+
   .pb-chat-container {
     flex: 1;
     display: flex;
@@ -919,10 +1295,11 @@ page {
       bottom: 0;
       z-index: 20;
       flex-shrink: 0;
-      background: #fff;
+      background: #f6f6f6;
       padding-bottom: env(safe-area-inset-bottom);
       box-sizing: border-box;
       transition: transform 0.2s ease;
+      box-shadow: 0 -3px 5px 0 #e5e5e5;
 
       .chat-bottom {
         width: 100%;
@@ -931,7 +1308,6 @@ page {
         .send-msg {
           display: flex;
           align-items: flex-end;
-          gap: 16rpx;
           padding: 28rpx 30rpx;
           width: 100%;
           box-sizing: border-box;
@@ -940,11 +1316,12 @@ page {
         .uni-textarea {
           flex: 1;
           min-width: 0;
+
           .chat-input-box {
             width: 100%;
             min-height: 75rpx;
             max-height: 500rpx;
-            background: #f1f1f1;
+            background: #ffffff;
             border-radius: 40rpx;
             font-size: 32rpx;
             font-family: PingFang SC;
@@ -984,7 +1361,7 @@ page {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 140rpx;
+          width: 120rpx;
           height: 75rpx;
           border-radius: 50rpx;
           font-size: 28rpx;
@@ -1064,8 +1441,12 @@ page {
 ::v-deep .wd-drop-menu__item-title::after {
   background: white !important;
 }
+
 ::v-deep .chat-action-btn {
   flex-shrink: 0;
+}
+::v-deep .wd-textarea__placeholder {
+  // z-index: 9;
 }
 
 .chat-bottom-anchor {
