@@ -26,30 +26,30 @@
               <view
                 class="h-6 w-6 flex items-center justify-center rounded bg-orange-500 text-xs text-white"
               >
-                {{ item.demandInfoDO?.typeStr.substring(0, 1) }}
+                {{ item.demandInfoDO?.typeStr?.substring(0, 1) || '-' }}
               </view>
               <text class="text-sm text-gray-800 font-medium">
-                {{ item.demandInfoDO?.typeStr }}
+                {{ item.demandInfoDO?.typeStr || '--' }}
               </text>
             </view>
             <text class="text-xs text-gray-400">
-              订单编号：{{ item.orderCode }}
+              订单编号：{{ item.orderCode || '--' }}
             </text>
           </view>
 
           <!-- 行程信息 -->
           <view class="flex flex-col text-xs text-gray-500 space-y-1">
-            <text>出行日期：{{ item.demandInfoDO?.startTimeStr }}</text>
-            <text>集合地：{{ item.demandInfoDO?.resort }}</text>
-            <text>集合时间：{{ item.demandInfoDO?.resortTimeStr }}</text>
-            <text v-if="item.demandInfoDO?.type == 1">
-              出游景点：{{ item.demandInfoDO?.destination }}
+            <text>出行日期：{{ item.demandInfoDO?.startTimeStr || '--' }}</text>
+            <text>集合地：{{ item.demandInfoDO?.resort || '--' }}</text>
+            <text>集合时间：{{ item.demandInfoDO?.resortTimeStr || '--' }}</text>
+            <text v-if="item.demandInfoDO?.type === 1">
+              出游景点：{{ item.demandInfoDO?.destination || '--' }}
             </text>
-            <text v-if="item.demandInfoDO?.type == 2">
-              出游景点：{{ item.demandInfoDO?.waypointNames }}
+            <text v-if="item.demandInfoDO?.type === 2">
+              出游景点：{{ item.demandInfoDO?.waypointNames || '--' }}
             </text>
-            <text>导游等级：{{ item.demandInfoDO?.guideLevelName }}</text>
-            <text>订单状态：{{ item.statusName }}</text>
+            <text>导游等级：{{ item.demandInfoDO?.guideLevelName || '--' }}</text>
+            <text>订单状态：{{ item.statusName || '--' }}</text>
           </view>
 
           <!-- 金额 -->
@@ -107,16 +107,12 @@
 <script lang="ts" setup>
 import type { SocketConfig } from '@/utils/socket-io-manager'
 import * as orderApi from '@/api/order'
-import { useSocket } from '@/store/connectSocket'
-import { useMessageStore } from '@/store/message'
 import { useTokenStore } from '@/store/token'
 import { SocketIOManager } from '@/utils/socket-io-manager'
 
 defineOptions({
   name: 'TourGuideRobOrderIndex',
 })
-
-const messageStore = useMessageStore()
 
 interface ChatMessage {
   content?: string
@@ -125,17 +121,62 @@ interface ChatMessage {
   isMine?: boolean
   type?: string
 }
+
+interface WaypointItem {
+  name?: string
+}
+
+interface DemandInfo {
+  type?: number
+  typeStr?: string
+  startTimeStr?: string
+  resort?: string
+  resortTimeStr?: string
+  destination?: string
+  guideLevelName?: string
+  waypoint?: string | WaypointItem[]
+  waypointNames?: string
+}
+
+interface OrderItem {
+  id: number | string
+  orderCode?: string
+  statusName?: string
+  price?: number | string
+  demandInfoDO?: DemandInfo
+  [key: string]: any
+}
+
+interface SocketOrderPayload {
+  code?: number
+  errorMsg?: string
+  totalData?: number
+  detailOrderList?: OrderItem[]
+}
+
+const PAGE_SIZE = 10
+const LOADMORE_LOADING_STATE = 'loading'
+const LOADMORE_FINISHED_STATE = 'finished'
+const LOADMORE_ERROR_STATE = 'error'
+
+type LoadMoreState = typeof LOADMORE_LOADING_STATE | typeof LOADMORE_FINISHED_STATE | typeof LOADMORE_ERROR_STATE | ''
+type RefreshSource = 'init' | 'refresh' | 'loadMore'
+type SocketEventName = 'send_room_message' | 'send_user_message'
+
 // Socket.IO 实例
 const socketManager = ref<SocketIOManager | null>(null)
 const tokenStore = useTokenStore()
 const accessToken = tokenStore.getAccessToken()
 
-const successData = ref()
+const successData = ref<SocketOrderPayload | null>(null)
 // 响应式数据
 const messages = ref<ChatMessage[]>([])
 const inputMessage = ref('')
 const isConnected = ref(false)
 const socketId = ref('')
+const hasBoundListeners = ref(false)
+const pendingRequestSource = ref<RefreshSource>('init')
+const requestSequence = ref(0)
 
 // Socket.IO 配置
 const socketConfig: SocketConfig = {
@@ -149,14 +190,14 @@ const socketConfig: SocketConfig = {
 }
 
 const orderData = ref({
-  data: [],
+  data: [] as OrderItem[],
   loading: false,
   finished: false,
   total: 0,
   pageNo: 1,
-  pageSize: 10,
+  pageSize: PAGE_SIZE,
   status: undefined,
-  stateLoading: undefined,
+  stateLoading: '' as LoadMoreState,
   loadingMore: false,
   refreshing: false,
   type: undefined,
@@ -164,7 +205,7 @@ const orderData = ref({
 // 派单状态
 const autoSendOrder = ref(0)
 definePage({
-  priority: 0, // 优先级，数字越小优先级越高
+  priority: 0,
   style: {
     navigationBarTitleText: '导游抢单',
     enablePullDownRefresh: true,
@@ -174,41 +215,274 @@ definePage({
 
 const show = ref(false)
 
+function safeParseSocketPayload(data: unknown): SocketOrderPayload | null {
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data)
+    }
+    catch (error) {
+      console.error('解析 socket 数据失败:', error, data)
+      return null
+    }
+  }
+
+  if (typeof data === 'object' && data !== null)
+    return data as SocketOrderPayload
+
+  return null
+}
+
+function parseWaypoint(waypoint: DemandInfo['waypoint']): WaypointItem[] {
+  if (Array.isArray(waypoint))
+    return waypoint
+
+  if (!waypoint || typeof waypoint !== 'string')
+    return []
+
+  try {
+    const parsed = JSON.parse(waypoint)
+    return Array.isArray(parsed) ? parsed : []
+  }
+  catch (error) {
+    console.error('解析 waypoint 失败:', error, waypoint)
+    return []
+  }
+}
+
+function normalizeOrderItem(item: OrderItem): OrderItem {
+  const demandInfo = item?.demandInfoDO
+  if (!demandInfo)
+    return item
+
+  const waypointList = parseWaypoint(demandInfo.waypoint)
+  const waypointNames = waypointList
+    .map(waypoint => waypoint?.name?.trim())
+    .filter(Boolean)
+    .join(',')
+
+  return {
+    ...item,
+    demandInfoDO: {
+      ...demandInfo,
+      waypoint: waypointList,
+      waypointNames: demandInfo.type === 2 ? waypointNames : demandInfo.waypointNames,
+    },
+  }
+}
+
+function mergeOrders(currentOrders: OrderItem[], incomingOrders: OrderItem[], replace = false): OrderItem[] {
+  const orderMap = new Map<OrderItem['id'], OrderItem>()
+  const baseOrders = replace ? [] : currentOrders
+
+  baseOrders.forEach((item) => {
+    if (item?.id !== undefined && item?.id !== null)
+      orderMap.set(item.id, item)
+  })
+
+  incomingOrders.forEach((item) => {
+    const normalizedItem = normalizeOrderItem(item)
+    if (normalizedItem?.id === undefined || normalizedItem?.id === null)
+      return
+
+    const existingItem = orderMap.get(normalizedItem.id)
+    orderMap.set(normalizedItem.id, existingItem ? { ...existingItem, ...normalizedItem } : normalizedItem)
+  })
+
+  return Array.from(orderMap.values())
+}
+
+function finishRequest() {
+  orderData.value.loading = false
+  orderData.value.loadingMore = false
+  orderData.value.refreshing = false
+  uni.stopPullDownRefresh()
+}
+
+function setLoadMoreState(state?: LoadMoreState) {
+  orderData.value.stateLoading = state ?? ''
+}
+
+function syncFinishedState() {
+  const hasReachedTotal = orderData.value.total > 0 && orderData.value.data.length >= orderData.value.total
+  const pageNotFull = !orderData.value.loading && orderData.value.data.length > 0 && orderData.value.data.length % orderData.value.pageSize !== 0
+  orderData.value.finished = hasReachedTotal || pageNotFull
+  setLoadMoreState(orderData.value.finished ? LOADMORE_FINISHED_STATE : '')
+}
+
+function resetOrderList() {
+  orderData.value.data = []
+  orderData.value.pageNo = 1
+  orderData.value.total = 0
+  orderData.value.finished = false
+  orderData.value.loading = false
+  orderData.value.loadingMore = false
+  orderData.value.refreshing = false
+  setLoadMoreState('')
+}
+
 // 加载更多数据
 function loadMore() {
-  if (orderData.value.finished || orderData.value.loadingMore)
+  if (!isConnected.value || orderData.value.finished || orderData.value.loading || orderData.value.loadingMore)
     return
-  orderData.value.pageNo++
-  sendMessage()
+
+  orderData.value.pageNo += 1
+  orderData.value.loadingMore = true
+  setLoadMoreState(LOADMORE_LOADING_STATE)
+  requestOrders('loadMore')
 }
 
 // 添加普通消息
-function addMessage(message) {
+function addMessage(message: ChatMessage) {
   messages.value.push(message)
 }
 
-// 发送消息-切换需求类型或者修改分页数量
-function sendMessage() {
-  const message = {
+function buildOrderRequestMessage() {
+  return {
     type: orderData.value.type,
     contentType: 0,
-    messageId: '0',
+    messageId: `${Date.now()}_${requestSequence.value}`,
     sessionId: '0',
     pageNo: orderData.value.pageNo,
-    pageSize: 10,
+    pageSize: orderData.value.pageSize,
+  }
+}
+
+// 发送消息-切换需求类型或者修改分页数量
+function requestOrders(source: RefreshSource = 'init') {
+  if (!socketManager.value || !isConnected.value) {
+    console.warn('socket 未连接，跳过请求')
+    finishRequest()
+    if (source === 'loadMore' && orderData.value.pageNo > 1)
+      orderData.value.pageNo -= 1
+    setLoadMoreState(LOADMORE_ERROR_STATE)
+    return
   }
 
-  // 添加到本地消息列表
+  pendingRequestSource.value = source
+  requestSequence.value += 1
+
+  if (source === 'refresh') {
+    orderData.value.refreshing = true
+    orderData.value.loadingMore = false
+  }
+  else if (source === 'loadMore') {
+    orderData.value.loadingMore = true
+  }
+  else {
+    orderData.value.loading = true
+  }
+
+  const message = buildOrderRequestMessage()
+
   addMessage({
     ...message,
+    timestamp: Date.now(),
   })
 
-  // 发送到服务器
   socketManager.value.emit('accept_user_message', message)
-
-  // 清空输入框
   inputMessage.value = ''
 }
+
+function handleSocketError(errorMsg = '数据加载失败', source = pendingRequestSource.value) {
+  if (source === 'loadMore' && orderData.value.pageNo > 1)
+    orderData.value.pageNo -= 1
+
+  finishRequest()
+  setLoadMoreState(LOADMORE_ERROR_STATE)
+  uni.showToast({
+    title: errorMsg,
+    icon: 'none',
+  })
+}
+
+function applySocketOrders(payload: SocketOrderPayload, eventName: SocketEventName) {
+  successData.value = payload
+
+  if (payload.code !== 0) {
+    handleSocketError(payload.errorMsg || '订单数据异常')
+    return
+  }
+
+  const source = pendingRequestSource.value
+  const incomingOrders = Array.isArray(payload.detailOrderList) ? payload.detailOrderList : []
+  const shouldReplace = eventName === 'send_user_message' && source === 'refresh'
+
+  orderData.value.data = mergeOrders(orderData.value.data, incomingOrders, shouldReplace)
+
+  if (eventName === 'send_user_message') {
+    orderData.value.total = Number(payload.totalData || 0)
+    if (incomingOrders.length < orderData.value.pageSize)
+      orderData.value.finished = true
+    else
+      syncFinishedState()
+  }
+  else {
+    syncFinishedState()
+  }
+
+  finishRequest()
+  if (!orderData.value.finished)
+    setLoadMoreState('')
+}
+
+function registerSocketListeners() {
+  if (!socketManager.value || hasBoundListeners.value)
+    return
+
+  socketManager.value.on('connect', (id: string) => {
+    console.log('连接成功，ID:', id)
+    isConnected.value = true
+    socketId.value = id
+    requestOrders(orderData.value.data.length ? 'refresh' : 'init')
+  })
+
+  socketManager.value.on('disconnect', (reason: string) => {
+    console.log('断开连接:', reason)
+    isConnected.value = false
+    socketId.value = ''
+    finishRequest()
+  })
+
+  socketManager.value.on('connect_error', (error: string) => {
+    console.error('连接错误:', error)
+    handleSocketError('Socket 连接错误')
+  })
+
+  socketManager.value.on('reconnect', (attempt: number) => {
+    console.log('重连成功:', attempt)
+    isConnected.value = true
+    requestOrders('refresh')
+  })
+
+  socketManager.value.on('system', (data: any) => {
+    console.log('系统消息:', data)
+  })
+
+  socketManager.value.on('pong', (data: any) => {
+    console.log('收到Pong响应:', data)
+  })
+
+  socketManager.value.on('send_room_message', (data: unknown) => {
+    const payload = safeParseSocketPayload(data)
+    if (!payload) {
+      handleSocketError('推送数据解析失败')
+      return
+    }
+    applySocketOrders(payload, 'send_room_message')
+  })
+
+  socketManager.value.on('send_user_message', (data: unknown) => {
+    const payload = safeParseSocketPayload(data)
+    if (!payload) {
+      handleSocketError('订单数据解析失败')
+      return
+    }
+    applySocketOrders(payload, 'send_user_message')
+  })
+
+  hasBoundListeners.value = true
+}
+
 // 派单设置
 function handleClickRight() {
   show.value = true
@@ -223,7 +497,7 @@ function handleClose() {
 function submitOrderConfig() {
   orderApi.updateDispatchOrderStatus({
     autoSendOrder: autoSendOrder.value,
-  }).then((data) => {
+  }).then(() => {
     uni.showToast({
       title: '保存成功',
       icon: 'success',
@@ -231,8 +505,10 @@ function submitOrderConfig() {
 
     show.value = false
   }).catch((error) => {
+    console.error('保存抢单配置失败:', error)
     uni.showToast({
-      icon: 'error',
+      title: '保存失败',
+      icon: 'none',
     })
   })
 }
@@ -242,250 +518,54 @@ function connect() {
   try {
     if (socketManager.value) {
       socketManager.value.destroy()
+      hasBoundListeners.value = false
     }
 
     socketManager.value = new SocketIOManager(socketConfig)
+    registerSocketListeners()
     socketManager.value.initialize()
-
-    // 监听系统事件
-    socketManager.value.on('connect', (id: string) => {
-      console.log('连接成功，ID:', id)
-      isConnected.value = true
-      socketId.value = id
-    })
-
-    socketManager.value.on('disconnect', (reason: string) => {
-      console.log('断开连接:', reason)
-      isConnected.value = false
-      socketId.value = ''
-    })
-
-    socketManager.value.on('connect_error', (error: string) => {
-      console.error('连接错误:', error)
-    })
-
-    socketManager.value.on('reconnect', (attempt: number) => {
-      console.log('重连成功:', attempt)
-    })
-
-    // 监听自定义消息事件
-    socketManager.value.on('system', (data: any) => {
-      console.log('系统消息:', data)
-      if (data && data.content) {
-      }
-    })
-
-    socketManager.value.on('pong', (data: any) => {
-      console.log('收到Pong响应:', data)
-    })
-
-    socketManager.value.on('send_room_message', (data: any) => {
-      // 单独推送的内容
-      const resData = JSON.parse(data)
-      successData.value = data
-      if (resData.code == 0) {
-        const existingIds = new Set(orderData.value.data.map(item => item.id))
-        const uniqueNewData = (resData?.detailOrderList ?? []).filter(item => !existingIds.has(item.id))
-        orderData.value.data.push(...uniqueNewData)
-        orderData.value.data.forEach((item) => {
-          if (item.demandInfoDO.type == 2 && item.demandInfoDO.waypoint) {
-            item.demandInfoDO.waypoint = JSON.parse(item.demandInfoDO.waypoint)
-            item.demandInfoDO.waypointNames = item.demandInfoDO.waypoint.map(item => item.name).filter(name => name != '').join(',')
-          }
-        })
-        // orderData.value.total = resData.totalData
-        // orderData.value.finished = orderData.value.data.length >= orderData.value.total
-        uni.stopPullDownRefresh()
-        // orderData.value.stateLoading = orderData.value.finished ? 'finished' : 'loading'
-
-        orderData.value.refreshing = false
-      }
-      else {
-        uni.showToast({
-          title: resData.errorMsg,
-          icon: 'error',
-        })
-      }
-    })
-
-    // 监听订单消息
-    socketManager.value.on('send_user_message', (data: any) => {
-      const resData = JSON.parse(data)
-      orderData.value.data.push(...resData.detailOrderList)
-      orderData.value.data = Array.from(new Set(orderData.value.data))
-      orderData.value.data.forEach((item) => {
-        if (item.demandInfoDO.type == 2 && item.demandInfoDO.waypoint) {
-          item.demandInfoDO.waypoint = JSON.parse(item.demandInfoDO.waypoint)
-          item.demandInfoDO.waypointNames = item.demandInfoDO.waypoint.map(item => item.name).filter(name => name != '').join(',')
-        }
-      })
-      orderData.value.total = resData.totalData
-      orderData.value.finished = orderData.value.data.length >= orderData.value.total
-      uni.stopPullDownRefresh()
-      orderData.value.stateLoading = orderData.value.finished ? 'finished' : 'loading'
-      orderData.value.refreshing = false
-      orderData.value.loadingMore = false
-      orderData.value.stateLoading = false
-      console.log(orderData.value.data)
-    })
   }
   catch (error) {
     console.error('Socket.IO 初始化失败:', error)
-  }
-}
-
-// 获取 socket 链接
-async function connectSocket() {
-  try {
-    socketManager.value = messageStore.getCachedSocketManager()
-
-    // 如果缓存中没有 socketManager，则创建新连接
-    if (!socketManager.value) {
-      console.log('缓存中未找到 Socket 连接，开始创建新连接...')
-
-      // 调用 useSocket 的 connect 方法并等待连接完成
-      await new Promise<void>((resolve, reject) => {
-        try {
-          const { connect: connectFn, isConnected } = useSocket()
-          connectFn()
-
-          // 监听连接状态，连接成功后 resolve
-          const checkConnection = setInterval(() => {
-            if (isConnected.value) {
-              clearInterval(checkConnection)
-              socketManager.value = messageStore.getCachedSocketManager()
-              console.log('Socket 连接成功')
-              resolve()
-            }
-          }, 100)
-
-          // 设置超时时间，避免无限等待
-          setTimeout(() => {
-            clearInterval(checkConnection)
-            if (!socketManager.value) {
-              reject(new Error('Socket 连接超时'))
-            }
-          }, 5000)
-        }
-        catch (error) {
-          reject(error)
-        }
-      })
-    }
-    sendMessage()
-
-    // 确保 socketManager.value 已赋值
-    if (!socketManager.value) {
-      uni.showToast({
-        title: 'Socket 连接失败',
-        icon: 'none',
-      })
-      return
-    }
-
-    socketManager.value.on('pong', (data: any) => {
-      console.log('收到 Pong 响应:', data)
-    })
-    socketManager.value.on('send_room_message', (data: any) => {
-      // 单独推送的内容
-      const resData = JSON.parse(data)
-      successData.value = data
-      if (resData.code == 0) {
-        const existingIds = new Set(orderData.value.data.map(item => item.id))
-        const uniqueNewData = (resData?.detailOrderList ?? []).filter(item => !existingIds.has(item.id))
-        orderData.value.data.push(...uniqueNewData)
-        orderData.value.data.forEach((item) => {
-          if (item.demandInfoDO.type == 2 && item.demandInfoDO.waypoint) {
-            item.demandInfoDO.waypoint = JSON.parse(item.demandInfoDO.waypoint)
-            item.demandInfoDO.waypointNames = item.demandInfoDO.waypoint.map(item => item.name).filter(name => name != '').join(',')
-          }
-        })
-        // orderData.value.total = resData.totalData
-        // orderData.value.finished = orderData.value.data.length >= orderData.value.total
-        uni.stopPullDownRefresh()
-        // orderData.value.stateLoading = orderData.value.finished ? 'finished' : 'loading'
-
-        orderData.value.refreshing = false
-      }
-      else {
-        uni.showToast({
-          title: resData.errorMsg,
-          icon: 'error',
-        })
-      }
-    })
-
-    // 监听订单消息
-    socketManager.value.on('send_user_message', (data: any) => {
-      const resData = JSON.parse(data)
-      successData.value = data
-      if (resData.code == 0) {
-        const existingIds = new Set(orderData.value.data.map(item => item.id))
-        const uniqueNewData = (resData?.detailOrderList ?? []).filter(item => !existingIds.has(item.id))
-        orderData.value.data.push(...uniqueNewData)
-        orderData.value.data.forEach((item) => {
-          if (item.demandInfoDO.type == 2 && item.demandInfoDO.waypoint) {
-            item.demandInfoDO.waypoint = JSON.parse(item.demandInfoDO.waypoint)
-            item.demandInfoDO.waypointNames = item.demandInfoDO.waypoint.map(item => item.name).filter(name => name != '').join(',')
-          }
-        })
-        orderData.value.total = resData.totalData
-        orderData.value.finished = orderData.value.data.length >= orderData.value.total
-        uni.stopPullDownRefresh()
-        orderData.value.stateLoading = orderData.value.finished ? 'finished' : 'loading'
-        orderData.value.refreshing = false
-      }
-      else {
-        uni.showToast({
-          title: resData.errorMsg,
-          icon: 'error',
-        })
-      }
-    })
-  }
-  catch (error) {
-    console.error('Socket.IO 初始化失败:', error)
+    handleSocketError('Socket 初始化失败')
   }
 }
 
 // 抢单
-function orderGrabbing(item) {
+function orderGrabbing(item: OrderItem) {
   uni.navigateTo({ url: `/pages/guide/detail?orderId=${item.id}` })
+}
+
+function clearOrderPageState() {
+  resetOrderList()
+  messages.value = []
+  inputMessage.value = ''
 }
 
 // 页面卸载时关闭连接
 onUnload(() => {
-  orderData.value.data = []
-  if (socketManager.value) {
-    // socketManager.value.destroy();
-  }
+  clearOrderPageState()
 })
 
 // 页面隐藏的时候
 onHide(() => {
-  orderData.value.data = []
-  if (socketManager.value) {
-    // socketManager.value.destroy();
-  }
+  clearOrderPageState()
 })
 
 onReady(() => {
   uni.pageScrollTo({
     scrollTop: 0,
-    duration: 0, // 无动画
+    duration: 0,
   })
 })
 
 onShow(() => {
-  // 加载消息列表
   connect()
-  // connectSocket()
 })
 
 onPullDownRefresh(() => {
-  orderData.value.data = []
-  orderData.value.pageNo = 1
-  sendMessage()
+  resetOrderList()
+  requestOrders('refresh')
 })
 </script>
 
